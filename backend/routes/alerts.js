@@ -46,13 +46,33 @@ router.get('/:id', async (req, res) => {
  * @desc    Create a new emergency alert report
  * @access  Protected (Authenticated Users)
  */
-router.post('/', protect, async (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const { category, severity, location, latitude, longitude, description, imageUrl } = req.body;
 
     // Validation
     if (!category || !severity || !location || !latitude || !longitude || !description) {
       return res.status(400).json({ message: 'Please provide all required alert parameters' });
+    }
+
+    // Determine reporter - support authenticated user or anonymous fallback
+    let reporter = 'Anonymous Citizen';
+    if (
+      req.headers.authorization &&
+      req.headers.authorization.startsWith('Bearer')
+    ) {
+      try {
+        const jwt = require('jsonwebtoken');
+        const User = require('../models/User');
+        const token = req.headers.authorization.split(' ')[1];
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        const user = await User.findById(decoded.id);
+        if (user) {
+          reporter = user.email;
+        }
+      } catch (err) {
+        console.warn('[ALERT ROUTE] Invalid token supplied, falling back to anonymous reporter');
+      }
     }
 
     const newAlert = await Alert.create({
@@ -63,7 +83,7 @@ router.post('/', protect, async (req, res) => {
       longitude,
       description,
       imageUrl,
-      reporter: req.user.email // Automatically set reporter email from auth context
+      reporter
     });
 
     return res.status(201).json(newAlert);

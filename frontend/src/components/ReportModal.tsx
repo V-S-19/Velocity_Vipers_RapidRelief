@@ -232,15 +232,13 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose }) => 
     if (!validate()) return;
 
     setIsSubmitting(true);
+    setErrors(prev => ({ ...prev, submit: '' }));
 
     // If coordinates weren't resolved by GPS, mock random coordinates centered near original dashboard focus
     const finalLat = latitude ?? parseFloat((mapCenter[0] + (Math.random() - 0.5) * 0.02).toFixed(6));
     const finalLng = longitude ?? parseFloat((mapCenter[1] + (Math.random() - 0.5) * 0.02).toFixed(6));
 
-    // Simulate database write delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    createAlert({
+    const success = await createAlert({
       category: category!,
       severity: severity!,
       location,
@@ -251,8 +249,12 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose }) => 
     });
 
     setIsSubmitting(false);
-    resetForm();
-    onClose();
+    if (success) {
+      resetForm();
+      onClose();
+    } else {
+      setErrors(prev => ({ ...prev, submit: 'Failed to submit emergency report to the server. Please verify your connection.' }));
+    }
   };
 
   const resetForm = () => {
@@ -314,6 +316,11 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose }) => 
         {/* Form Body - scrollable */}
         <form onSubmit={handleSubmit} className="flex flex-col min-h-0 flex-1">
           <div className="flex-1 overflow-y-auto p-6 space-y-5 scrollbar-thin">
+            {errors.submit && (
+              <div className="rounded-lg bg-red-500/10 border border-red-500/20 p-3 text-xs font-medium text-red-400">
+                {errors.submit}
+              </div>
+            )}
             
             {/* Category Select Grid */}
             <div>

@@ -19,8 +19,10 @@ export interface Alert {
 }
 
 export interface User {
+  id: string;
   email: string;
   role: 'user' | 'admin';
+  token: string;
 }
 
 interface AlertContextType {
@@ -30,18 +32,47 @@ interface AlertContextType {
   simulatorSpeed: 'slow' | 'medium' | 'fast';
   mapCenter: [number, number];
   setMapCenter: (center: [number, number]) => void;
-  createAlert: (alertData: Omit<Alert, 'id' | 'timestamp' | 'resolved' | 'reporter'>) => void;
-  resolveAlert: (id: string) => void;
-  updateAlert: (id: string, updatedFields: Partial<Alert>) => void;
-  deleteAlert: (id: string) => void;
-  login: (email: string, role: 'user' | 'admin') => Promise<boolean>;
+  createAlert: (alertData: Omit<Alert, 'id' | 'timestamp' | 'resolved' | 'reporter'>) => Promise<boolean>;
+  resolveAlert: (id: string) => Promise<void>;
+  updateAlert: (id: string, updatedFields: Partial<Alert>) => Promise<void>;
+  deleteAlert: (id: string) => Promise<void>;
+  login: (
+    email: string,
+    password?: string,
+    adminCode?: string,
+    role?: 'user' | 'admin'
+  ) => Promise<{ success: boolean; requiresVerification?: boolean; message?: string }>;
   logout: () => void;
-  signup: (email: string, role: 'user' | 'admin') => Promise<boolean>;
+  signup: (
+    email: string,
+    password?: string,
+    role?: 'user' | 'admin',
+    adminCode?: string
+  ) => Promise<{ success: boolean; requiresVerification?: boolean; message?: string }>;
+  verifyEmail: (email: string, otp: string) => Promise<{ success: boolean; message?: string }>;
+  resendOtp: (email: string) => Promise<{ success: boolean; message?: string }>;
   setSimulatorActive: (active: boolean) => void;
   setSimulatorSpeed: (speed: 'slow' | 'medium' | 'fast') => void;
 }
 
 const AlertContext = createContext<AlertContextType | undefined>(undefined);
+
+const API_URL = 'http://localhost:5000/api';
+
+const mapBackendAlert = (alert: any): Alert => ({
+  id: alert._id || alert.id,
+  category: alert.category,
+  severity: alert.severity,
+  location: alert.location,
+  latitude: alert.latitude,
+  longitude: alert.longitude,
+  description: alert.description,
+  timestamp: new Date(alert.timestamp || alert.createdAt),
+  imageUrl: alert.imageUrl,
+  resolved: alert.resolved,
+  reporter: alert.reporter,
+  assignedAgency: alert.assignedAgency,
+});
 
 // Initial Mock Alerts
 const INITIAL_ALERTS: Alert[] = [
@@ -145,20 +176,7 @@ const LOCATIONS = [
 ];
 
 export const AlertProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [alerts, setAlerts] = useState<Alert[]>(() => {
-    const saved = localStorage.getItem('rapidrelief_alerts');
-    if (saved) {
-      try {
-        return JSON.parse(saved).map((a: any) => ({
-          ...a,
-          timestamp: new Date(a.timestamp)
-        }));
-      } catch (e) {
-        console.error('Error loading alerts from localStorage', e);
-      }
-    }
-    return INITIAL_ALERTS;
-  });
+  const [alerts, setAlerts] = useState<Alert[]>(INITIAL_ALERTS);
 
   const [user, setUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('rapidrelief_user');
@@ -183,59 +201,316 @@ export const AlertProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
   }, []);
 
-  // Save alerts to localStorage
+  const fetchAlerts = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_URL}/alerts`);
+      if (response.ok) {
+        const data = await response.json();
+        setAlerts(data.map(mapBackendAlert));
+      } else {
+        console.warn('Backend API returned error response. Falling back to local state.');
+      }
+    } catch (error) {
+      console.warn('Failed to fetch from backend. Please start backend server. Falling back to local state.', error);
+    }
+  }, []);
+
+  // Fetch alerts on load
   useEffect(() => {
-    localStorage.setItem('rapidrelief_alerts', JSON.stringify(alerts));
-  }, [alerts]);
+    fetchAlerts();
+  }, [fetchAlerts]);
 
-  const createAlert = useCallback((alertData: Omit<Alert, 'id' | 'timestamp' | 'resolved' | 'reporter'>) => {
-    const newAlert: Alert = {
-      ...alertData,
-      id: `alert-${Date.now()}`,
-      timestamp: new Date(),
-      resolved: false,
-      reporter: user ? user.email : 'Anonymous Citizen',
-    };
-    setAlerts(prev => [newAlert, ...prev]);
-  }, [user]);
+  // Periodic polling for new alerts
+  useEffect(() => {
+    const interval = setInterval(fetchAlerts, simulatorActive ? 4000 : 10000);
+    return () => clearInterval(interval);
+  }, [fetchAlerts, simulatorActive]);
 
-  const resolveAlert = useCallback((id: string) => {
-    setAlerts(prev => prev.map(alert => 
-      alert.id === id ? { ...alert, resolved: !alert.resolved } : alert
-    ));
-  }, []);
-
-  const updateAlert = useCallback((id: string, updatedFields: Partial<Alert>) => {
-    setAlerts(prev => prev.map(alert => 
-      alert.id === id ? { ...alert, ...updatedFields } : alert
-    ));
-  }, []);
-
-  const deleteAlert = useCallback((id: string) => {
-    setAlerts(prev => prev.filter(alert => alert.id !== id));
-  }, []);
-
-  const login = async (email: string, role: 'user' | 'admin' = 'user') => {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 800));
-    const loggedUser: User = { email, role };
-    setUser(loggedUser);
-    localStorage.setItem('rapidrelief_user', JSON.stringify(loggedUser));
-    return true;
-  };
-
-  const signup = async (email: string, role: 'user' | 'admin' = 'user') => {
-    await new Promise(resolve => setTimeout(resolve, 800));
-    const loggedUser: User = { email, role };
-    setUser(loggedUser);
-    localStorage.setItem('rapidrelief_user', JSON.stringify(loggedUser));
-    return true;
-  };
-
-  const logout = () => {
+  const logout = useCallback(() => {
     setUser(null);
     localStorage.removeItem('rapidrelief_user');
-  };
+  }, []);
+
+  // Verify token on application mount
+  useEffect(() => {
+    const verifySession = async () => {
+      const savedUser = localStorage.getItem('rapidrelief_user');
+      if (savedUser) {
+        try {
+          const parsed = JSON.parse(savedUser);
+          if (parsed && parsed.token && parsed.token !== 'demo-bypass-token') {
+            const response = await fetch(`${API_URL}/auth/me`, {
+              headers: {
+                'Authorization': `Bearer ${parsed.token}`
+              }
+            });
+            if (response.ok) {
+              const data = await response.json();
+              const updatedUser: User = {
+                id: data._id,
+                email: data.email,
+                role: data.role,
+                token: parsed.token
+              };
+              setUser(updatedUser);
+              localStorage.setItem('rapidrelief_user', JSON.stringify(updatedUser));
+            } else {
+              console.warn('Session expired or token invalid. Clearing session.');
+              logout();
+            }
+          }
+        } catch (error) {
+          console.error('Error verifying user session:', error);
+          logout();
+        }
+      }
+    };
+    verifySession();
+  }, [logout]);
+
+  const createAlert = useCallback(async (alertData: Omit<Alert, 'id' | 'timestamp' | 'resolved' | 'reporter'>): Promise<boolean> => {
+    try {
+      const response = await fetch(`${API_URL}/alerts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(user?.token ? { 'Authorization': `Bearer ${user.token}` } : {})
+        },
+        body: JSON.stringify(alertData)
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const mapped = mapBackendAlert(data);
+        setAlerts(prev => [mapped, ...prev]);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('Failed to create alert in backend: ', error);
+      // Local fallback for offline mode
+      const newAlert: Alert = {
+        ...alertData,
+        id: `alert-${Date.now()}`,
+        timestamp: new Date(),
+        resolved: false,
+        reporter: user ? user.email : 'Anonymous Citizen',
+      };
+      setAlerts(prev => [newAlert, ...prev]);
+      return true;
+    }
+  }, [user]);
+
+  const resolveAlert = useCallback(async (id: string) => {
+    const alertToToggle = alerts.find(a => a.id === id);
+    if (!alertToToggle) return;
+    const newResolvedStatus = !alertToToggle.resolved;
+    try {
+      const response = await fetch(`${API_URL}/alerts/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(user?.token ? { 'Authorization': `Bearer ${user.token}` } : {})
+        },
+        body: JSON.stringify({ resolved: newResolvedStatus })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const mapped = mapBackendAlert(data);
+        setAlerts(prev => prev.map(alert => alert.id === id ? mapped : alert));
+      } else {
+        const errData = await response.json();
+        console.error('Failed to resolve alert in backend:', errData.message);
+      }
+    } catch (error) {
+      console.error('Error resolving alert:', error);
+      // Fallback
+      setAlerts(prev => prev.map(alert => 
+        alert.id === id ? { ...alert, resolved: newResolvedStatus } : alert
+      ));
+    }
+  }, [alerts, user]);
+
+  const updateAlert = useCallback(async (id: string, updatedFields: Partial<Alert>) => {
+    try {
+      const response = await fetch(`${API_URL}/alerts/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(user?.token ? { 'Authorization': `Bearer ${user.token}` } : {})
+        },
+        body: JSON.stringify(updatedFields)
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const mapped = mapBackendAlert(data);
+        setAlerts(prev => prev.map(alert => alert.id === id ? mapped : alert));
+      } else {
+        const errData = await response.json();
+        console.error('Failed to update alert in backend:', errData.message);
+      }
+    } catch (error) {
+      console.error('Error updating alert:', error);
+      // Fallback
+      setAlerts(prev => prev.map(alert => 
+        alert.id === id ? { ...alert, ...updatedFields } : alert
+      ));
+    }
+  }, [user]);
+
+  const deleteAlert = useCallback(async (id: string) => {
+    try {
+      const response = await fetch(`${API_URL}/alerts/${id}`, {
+        method: 'DELETE',
+        headers: {
+          ...(user?.token ? { 'Authorization': `Bearer ${user.token}` } : {})
+        }
+      });
+      if (response.ok) {
+        setAlerts(prev => prev.filter(alert => alert.id !== id));
+      } else {
+        const errData = await response.json();
+        console.error('Failed to delete alert in backend:', errData.message);
+      }
+    } catch (error) {
+      console.error('Error deleting alert:', error);
+      // Fallback
+      setAlerts(prev => prev.filter(alert => alert.id !== id));
+    }
+  }, [user]);
+
+  const login = useCallback(async (
+    email: string,
+    password?: string,
+    adminCode?: string,
+    role: 'user' | 'admin' = 'user'
+  ): Promise<{ success: boolean; requiresVerification?: boolean; message?: string }> => {
+    if (!password) {
+      // Demo bypass / offline support
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const loggedUser: User = {
+        id: 'demo-admin-id',
+        email,
+        role,
+        token: 'demo-bypass-token'
+      };
+      setUser(loggedUser);
+      localStorage.setItem('rapidrelief_user', JSON.stringify(loggedUser));
+      return { success: true };
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email, password, adminCode })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        const loggedUser: User = {
+          id: data._id,
+          email: data.email,
+          role: data.role,
+          token: data.token
+        };
+        setUser(loggedUser);
+        localStorage.setItem('rapidrelief_user', JSON.stringify(loggedUser));
+        return { success: true };
+      } else if (response.status === 403 && data.requiresVerification) {
+        return { success: false, requiresVerification: true, message: data.message };
+      } else {
+        return { success: false, message: data.message || 'Authentication failed' };
+      }
+    } catch (error) {
+      console.error('[LOGIN ERROR]', error);
+      return { success: false, message: 'Server communication error. Please check if backend is running.' };
+    }
+  }, []);
+
+  const signup = useCallback(async (
+    email: string,
+    password?: string,
+    role: 'user' | 'admin' = 'user',
+    adminCode?: string
+  ): Promise<{ success: boolean; requiresVerification?: boolean; message?: string }> => {
+    try {
+      const response = await fetch(`${API_URL}/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email, password, role, adminCode })
+      });
+
+      const data = await response.json();
+
+      if (response.status === 201) {
+        return { success: true, requiresVerification: true, message: data.message };
+      } else {
+        return { success: false, message: data.message || 'Registration failed' };
+      }
+    } catch (error) {
+      console.error('[SIGNUP ERROR]', error);
+      return { success: false, message: 'Server communication error. Please check if backend is running.' };
+    }
+  }, []);
+
+  const verifyEmail = useCallback(async (email: string, otp: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+      const response = await fetch(`${API_URL}/auth/verify-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email, otp })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        const loggedUser: User = {
+          id: data._id,
+          email: data.email,
+          role: data.role,
+          token: data.token
+        };
+        setUser(loggedUser);
+        localStorage.setItem('rapidrelief_user', JSON.stringify(loggedUser));
+        return { success: true };
+      } else {
+        return { success: false, message: data.message || 'Verification failed' };
+      }
+    } catch (error) {
+      console.error('[VERIFY EMAIL ERROR]', error);
+      return { success: false, message: 'Server communication error' };
+    }
+  }, []);
+
+  const resendOtp = useCallback(async (email: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+      const response = await fetch(`${API_URL}/auth/resend-otp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        return { success: true, message: data.message };
+      } else {
+        return { success: false, message: data.message || 'Failed to resend code' };
+      }
+    } catch (error) {
+      console.error('[RESEND OTP ERROR]', error);
+      return { success: false, message: 'Server communication error' };
+    }
+  }, []);
 
   // Simulator Effect
   useEffect(() => {
@@ -249,7 +524,7 @@ export const AlertProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     const intervalTime = intervalDurations[simulatorSpeed];
 
-    const generateMockAlert = () => {
+    const generateMockAlert = async () => {
       const categories: Category[] = ['fire', 'flood', 'medical', 'accident', 'earthquake', 'other'];
       const severities: Severity[] = ['low', 'medium', 'high', 'critical'];
       
@@ -309,7 +584,33 @@ export const AlertProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         reporter: 'Simulated Alert Dispatcher',
       };
 
-      setAlerts(prev => [simulatorAlert, ...prev]);
+      try {
+        const response = await fetch(`${API_URL}/alerts`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            category: randomCategory,
+            severity: randomSeverity,
+            location: randomLocation,
+            latitude: parseFloat(newLat.toFixed(6)),
+            longitude: parseFloat(newLng.toFixed(6)),
+            description: randomDescription,
+            imageUrl
+          })
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const mapped = mapBackendAlert(data);
+          setAlerts(prev => [mapped, ...prev]);
+        } else {
+          setAlerts(prev => [simulatorAlert, ...prev]);
+        }
+      } catch (error) {
+        setAlerts(prev => [simulatorAlert, ...prev]);
+      }
 
       // Push notification if permission granted
       if (Notification.permission === 'granted') {
@@ -345,6 +646,8 @@ export const AlertProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       login,
       logout,
       signup,
+      verifyEmail,
+      resendOtp,
       setSimulatorActive,
       setSimulatorSpeed
     }}>
@@ -359,4 +662,4 @@ export const useAlerts = () => {
     throw new Error('useAlerts must be used within an AlertProvider');
   }
   return context;
-};
+}
