@@ -15,10 +15,12 @@ export interface Alert {
   imageUrl?: string;
   resolved: boolean;
   reporter: string;
+  assignedAgency?: string;
 }
 
-interface User {
+export interface User {
   email: string;
+  role: 'user' | 'admin';
 }
 
 interface AlertContextType {
@@ -30,10 +32,11 @@ interface AlertContextType {
   setMapCenter: (center: [number, number]) => void;
   createAlert: (alertData: Omit<Alert, 'id' | 'timestamp' | 'resolved' | 'reporter'>) => void;
   resolveAlert: (id: string) => void;
+  updateAlert: (id: string, updatedFields: Partial<Alert>) => void;
   deleteAlert: (id: string) => void;
-  login: (email: string) => Promise<boolean>;
+  login: (email: string, role: 'user' | 'admin') => Promise<boolean>;
   logout: () => void;
-  signup: (email: string) => Promise<boolean>;
+  signup: (email: string, role: 'user' | 'admin') => Promise<boolean>;
   setSimulatorActive: (active: boolean) => void;
   setSimulatorSpeed: (speed: 'slow' | 'medium' | 'fast') => void;
 }
@@ -202,22 +205,28 @@ export const AlertProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     ));
   }, []);
 
+  const updateAlert = useCallback((id: string, updatedFields: Partial<Alert>) => {
+    setAlerts(prev => prev.map(alert => 
+      alert.id === id ? { ...alert, ...updatedFields } : alert
+    ));
+  }, []);
+
   const deleteAlert = useCallback((id: string) => {
     setAlerts(prev => prev.filter(alert => alert.id !== id));
   }, []);
 
-  const login = async (email: string) => {
+  const login = async (email: string, role: 'user' | 'admin' = 'user') => {
     // Simulate API delay
     await new Promise(resolve => setTimeout(resolve, 800));
-    const loggedUser = { email };
+    const loggedUser: User = { email, role };
     setUser(loggedUser);
     localStorage.setItem('rapidrelief_user', JSON.stringify(loggedUser));
     return true;
   };
 
-  const signup = async (email: string) => {
+  const signup = async (email: string, role: 'user' | 'admin' = 'user') => {
     await new Promise(resolve => setTimeout(resolve, 800));
-    const loggedUser = { email };
+    const loggedUser: User = { email, role };
     setUser(loggedUser);
     localStorage.setItem('rapidrelief_user', JSON.stringify(loggedUser));
     return true;
@@ -331,6 +340,7 @@ export const AlertProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setMapCenter,
       createAlert,
       resolveAlert,
+      updateAlert,
       deleteAlert,
       login,
       logout,

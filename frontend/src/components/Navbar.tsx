@@ -1,11 +1,13 @@
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAlerts } from '../context/AlertContext';
-import { ShieldAlert, LogIn, LogOut, Radio, Activity } from 'lucide-react';
+import { ShieldAlert, LogIn, LogOut, Radio, Activity, LayoutGrid } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
   const { user, logout, alerts } = useAlerts();
   const navigate = useNavigate();
+  const location = useLocation();
+  const isAdminPage = location.pathname === '/admin';
 
   const activeAlertsCount = alerts.filter(a => !a.resolved).length;
   const criticalCount = alerts.filter(a => !a.resolved && a.severity === 'critical').length;
@@ -58,8 +60,26 @@ export const Navbar: React.FC = () => {
         <div className="flex items-center gap-4">
           {user ? (
             <div className="flex items-center gap-3">
+              {user.role === 'admin' && (
+                <button
+                  onClick={() => navigate(isAdminPage ? '/' : '/admin')}
+                  className="flex items-center gap-1.5 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-1.5 text-xs font-bold text-red-400 transition-all hover:bg-red-500/20 hover:text-red-350 cursor-pointer"
+                >
+                  <LayoutGrid className="h-3.5 w-3.5 text-red-500" />
+                  <span>{isAdminPage ? 'View Public Map' : 'Admin Panel'}</span>
+                </button>
+              )}
               <div className="hidden flex-col items-end text-right sm:flex">
-                <span className="text-xs text-zinc-400">Signed in as</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Scope:</span>
+                  <span className={`text-[9px] font-bold px-1 rounded uppercase tracking-wide ${
+                    user.role === 'admin' 
+                      ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' 
+                      : 'bg-zinc-800 text-zinc-400 border border-zinc-700/50'
+                  }`}>
+                    {user.role}
+                  </span>
+                </div>
                 <span className="max-w-[150px] truncate text-sm font-medium text-zinc-200" title={user.email}>
                   {user.email}
                 </span>
@@ -69,7 +89,7 @@ export const Navbar: React.FC = () => {
                   logout();
                   navigate('/');
                 }}
-                className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-1.5 text-sm font-medium text-zinc-300 transition-all hover:bg-zinc-800 hover:text-white hover:border-zinc-700"
+                className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3.5 py-1.5 text-sm font-medium text-zinc-300 transition-all hover:bg-zinc-800 hover:text-white hover:border-zinc-700 cursor-pointer"
               >
                 <LogOut className="h-4 w-4" />
                 <span className="hidden sm:inline">Sign Out</span>

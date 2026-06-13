@@ -11,6 +11,7 @@ export const Auth: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [role, setRole] = useState<'user' | 'admin'>('user');
   
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -51,9 +52,9 @@ export const Auth: React.FC = () => {
     setIsLoading(true);
     try {
       if (isSignUp) {
-        await signup(email);
+        await signup(email, role);
       } else {
-        await login(email);
+        await login(email, role);
       }
       navigate('/'); // Redirect to dashboard on success
     } catch (err) {
@@ -68,6 +69,7 @@ export const Auth: React.FC = () => {
     setEmail('');
     setPassword('');
     setConfirmPassword('');
+    setRole('user');
     setErrors({});
   };
 
@@ -135,6 +137,39 @@ export const Auth: React.FC = () => {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Role Selection */}
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">
+                Portal Access Scope
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setRole('user')}
+                  className={`flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all duration-200 cursor-pointer ${
+                    role === 'user'
+                      ? 'border-red-500/50 bg-red-500/5 text-white'
+                      : 'border-zinc-800 bg-zinc-950/20 text-zinc-500 hover:text-zinc-350'
+                  }`}
+                >
+                  <span className="text-xs font-bold">Citizen / Responder</span>
+                  <span className="text-[9px] opacity-70 mt-0.5">Report & View alerts</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRole('admin')}
+                  className={`flex flex-col items-center justify-center p-3 rounded-xl border text-center transition-all duration-200 cursor-pointer ${
+                    role === 'admin'
+                      ? 'border-red-500/50 bg-red-500/5 text-white'
+                      : 'border-zinc-800 bg-zinc-950/20 text-zinc-500 hover:text-zinc-350'
+                  }`}
+                >
+                  <span className="text-xs font-bold">System Admin</span>
+                  <span className="text-[9px] opacity-70 mt-0.5">Command Center</span>
+                </button>
+              </div>
+            </div>
+
             {/* Email Field */}
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">
