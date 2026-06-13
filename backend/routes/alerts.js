@@ -4,6 +4,51 @@ const Alert = require('../models/Alert');
 const { protect, adminOnly } = require('../middleware/auth');
 
 /**
+ * @route   POST /api/alerts/analyze
+ * @desc    Analyze uploaded image/snapshot using the Python AI microservice
+ * @access  Public
+ */
+router.post('/analyze', async (req, res) => {
+  try {
+    const { image } = req.body;
+    if (!image) {
+      return res.status(400).json({ message: 'No image data provided for analysis' });
+    }
+
+    let buffer;
+    if (image.startsWith('data:image')) {
+      const base64Data = image.split(';base64,').pop();
+      buffer = Buffer.from(base64Data, 'base64');
+    } else {
+      return res.status(400).json({ message: 'Invalid image format. Base64 data URI required.' });
+    }
+
+    // Prepare FormData for Python AI microservice
+    const blob = new Blob([buffer], { type: 'image/jpeg' });
+    const formData = new FormData();
+    formData.append('media', blob, 'snapshot.jpg');
+
+    // Call Flask AI service on port 5001
+    const aiResponse = await fetch('http://localhost:5001/analyze', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!aiResponse.ok) {
+      const errorText = await aiResponse.text();
+      console.error('[AI SERVICE ERROR]', errorText);
+      return res.status(502).json({ message: 'AI microservice returned an error', error: errorText });
+    }
+
+    const data = await aiResponse.json();
+    return res.json(data);
+  } catch (error) {
+    console.error('[ANALYZE ROUTE ERROR]', error.message);
+    return res.status(500).json({ message: 'Internal server error during AI analysis' });
+  }
+});
+
+/**
  * @route   GET /api/alerts
  * @desc    Get all alerts (sorted by newest timestamp first)
  * @access  Public

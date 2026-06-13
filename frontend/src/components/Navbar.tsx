@@ -1,19 +1,44 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAlerts } from '../context/AlertContext';
-import { ShieldAlert, LogIn, LogOut, Radio, Activity, LayoutGrid } from 'lucide-react';
+import { ShieldAlert, LogIn, LogOut, Radio, Activity, LayoutGrid, Sun, Moon } from 'lucide-react';
 
-export const Navbar: React.FC = () => {
+interface NavbarProps {
+  onReportClick?: () => void;
+}
+
+export const Navbar: React.FC<NavbarProps> = ({ onReportClick }) => {
   const { user, logout, alerts } = useAlerts();
   const navigate = useNavigate();
   const location = useLocation();
   const isAdminPage = location.pathname === '/admin';
 
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    const saved = localStorage.getItem('rapidrelief_theme');
+    if (saved === 'light') {
+      document.documentElement.classList.add('light');
+      return 'light';
+    }
+    return 'dark';
+  });
+
+  const toggleTheme = () => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('light');
+      localStorage.setItem('rapidrelief_theme', 'light');
+      setTheme('light');
+    } else {
+      document.documentElement.classList.remove('light');
+      localStorage.setItem('rapidrelief_theme', 'dark');
+      setTheme('dark');
+    }
+  };
+
   const activeAlertsCount = alerts.filter(a => !a.resolved).length;
   const criticalCount = alerts.filter(a => !a.resolved && a.severity === 'critical').length;
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-zinc-800/80 bg-zinc-950/70 backdrop-blur-md">
+    <header className="sticky top-0 z-45 w-full border-b border-zinc-800/80 bg-zinc-950/70 backdrop-blur-md">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         
         {/* Brand logo */}
@@ -58,6 +83,24 @@ export const Navbar: React.FC = () => {
 
         {/* Navigation Action Buttons */}
         <div className="flex items-center gap-4">
+          {/* Theme Toggle Button */}
+          <button
+            onClick={toggleTheme}
+            className="rounded-lg p-2 bg-zinc-900/40 border border-zinc-800/80 text-zinc-400 hover:text-white hover:bg-zinc-800/60 cursor-pointer transition-all mr-1 shrink-0 flex items-center justify-center h-8 w-8"
+            title={theme === 'light' ? 'Switch to Dark Mode' : 'Switch to Light Mode'}
+          >
+            {theme === 'light' ? <Moon className="h-4 w-4 text-purple-500" /> : <Sun className="h-4 w-4 text-yellow-500" />}
+          </button>
+
+          {onReportClick && (
+            <button
+              onClick={onReportClick}
+              className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-red-650 to-orange-600 hover:from-red-600 hover:to-orange-500 px-3 py-2 text-xs font-bold text-white shadow-lg shadow-red-950/20 active:scale-[0.98] transition-all cursor-pointer mr-1 shrink-0"
+            >
+              <ShieldAlert className="h-3.5 w-3.5 text-white" />
+              <span>Report Emergency</span>
+            </button>
+          )}
           {user ? (
             <div className="flex items-center gap-3">
               {user.role === 'admin' && (

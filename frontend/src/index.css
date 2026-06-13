@@ -153,3 +153,102 @@ body,
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
+
+/* Light Mode Overrides */
+html.light,
+html.light body,
+html.light #root {
+  background-color: #f4f4f5 !important;
+  color: #18181b !important;
+}
+
+html.light .bg-zinc-950,
+html.light .bg-zinc-950\/20,
+html.light .bg-zinc-950\/40,
+html.light .bg-zinc-950\/60 {
+  background-color: #f4f4f5 !important;
+  color: #18181b !important;
+}
+
+html.light .bg-zinc-900\/20,
+html.light .bg-zinc-900\/40,
+html.light .bg-zinc-900\/60,
+html.light .bg-zinc-900 {
+  background-color: #ffffff !important;
+  color: #18181b !important;
+}
+
+html.light .text-zinc-100,
+html.light .text-zinc-200,
+html.light .text-zinc-300,
+html.light .text-white {
+  color: #18181b !important;
+}
+
+html.light .text-zinc-400,
+html.light .text-zinc-550,
+html.light .text-zinc-500 {
+  color: #52525b !important;
+}
+
+html.light .text-zinc-600,
+html.light .text-zinc-655 {
+  color: #71717a !important;
+}
+
+html.light .border-zinc-800,
+html.light .border-zinc-800\/60,
+html.light .border-zinc-800\/80,
+html.light .border-zinc-805,
+html.light .border-zinc-850 {
+  border-color: #e4e4e7 !important;
+}
+
+html.light select,
+html.light input {
+  background-color: #ffffff !important;
+  border-color: #d4d4d8 !important;
+  color: #18181b !important;
+}
+
+html.light select option {
+  background-color: #ffffff !important;
+  color: #18181b !important;
+}
+
+html.light .leaflet-tile {
+  filter: none !important;
+}
+
+html.light .leaflet-container {
+  background: #f4f4f5 !important;
+}
+
+html.light .leaflet-bar a {
+  background-color: #ffffff !important;
+  color: #18181b !important;
+  border-bottom: 1px solid #e4e4e7 !important;
+}
+
+html.light .leaflet-popup-content-wrapper {
+  background: #ffffff !important;
+  color: #18181b !important;
+  border: 1px solid #e4e4e7 !important;
+}
+
+html.light .leaflet-popup-tip {
+  background: #ffffff !important;
+  border: 1px solid #e4e4e7 !important;
+}
+
+html.light .shimmer-bg {
+  background: linear-gradient(90deg, #e4e4e7 25%, #f4f4f5 50%, #e4e4e7 75%);
+}
+
+html.light ::-webkit-scrollbar-track {
+  background: #f4f4f5;
+}
+
+html.light ::-webkit-scrollbar-thumb {
+  background: #d4d4d8;
+}

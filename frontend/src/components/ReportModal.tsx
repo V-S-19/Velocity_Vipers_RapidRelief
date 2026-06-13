@@ -98,6 +98,15 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose }) => 
     setIsCameraActive(false);
   };
 
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = error => reject(error);
+    });
+  };
+
   const captureSnapshot = () => {
     if (videoRef.current) {
       const video = videoRef.current;
@@ -110,53 +119,57 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose }) => 
         const dataUrl = canvas.toDataURL('image/jpeg');
         setImagePreview(dataUrl);
         stopCamera();
-        runAiAnalysis();
+        runAiAnalysis(dataUrl);
       }
     }
   };
 
-  const runAiAnalysis = () => {
+  const runAiAnalysis = async (base64Image: string) => {
     setIsAnalyzing(true);
-    setTimeout(() => {
-      setIsAnalyzing(false);
-      const mockScenarios = [
-        {
-          category: 'fire' as Category,
-          severity: 'critical' as Severity,
-          description: 'Visible thick plume of black smoke arising from second-floor industrial facility. Strong flames observed, potential hazard of gas canister explosion.'
+    setErrors(prev => ({ ...prev, image: '', category: '', severity: '', description: '' }));
+    try {
+      const response = await fetch('http://localhost:5000/api/alerts/analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
         },
-        {
-          category: 'flood' as Category,
-          severity: 'high' as Severity,
-          description: 'Sudden flash flooding causing street water to rise above 2 feet. Drainage channel overflowed, surrounding buildings at risk of cellar inundation.'
-        },
-        {
-          category: 'accident' as Category,
-          severity: 'high' as Severity,
-          description: 'Two-car side collision blocking multiple highway lanes. Potential driver entrapment, oil leaking onto tarmac, urgent medical/paramedic dispatch required.'
-        },
-        {
-          category: 'medical' as Category,
-          severity: 'medium' as Severity,
-          description: 'Elderly pedestrian collapsed on public walkway. Showing signs of severe heat stroke, dehydration, and laboured breathing. First responders needed on scene.'
-        },
-        {
-          category: 'earthquake' as Category,
-          severity: 'critical' as Severity,
-          description: 'Severe structural cracking observed on historic brick building facade following seismic tremors. Debris has fallen onto pedestrian footpath, area needs cordon.'
-        }
-      ];
+        body: JSON.stringify({ image: base64Image })
+      });
 
-      const scenario = mockScenarios[Math.floor(Math.random() * mockScenarios.length)];
-      setCategory(scenario.category);
-      setSeverity(scenario.severity);
-      setDescription(scenario.description);
-      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.hazardDetected) {
+          const matchedCategory = data.incidentType.toLowerCase();
+          const matchedSeverity = data.severity.toLowerCase();
+          
+          if (['fire', 'flood', 'medical', 'accident', 'earthquake', 'other'].includes(matchedCategory)) {
+            setCategory(matchedCategory as Category);
+          } else {
+            setCategory('other');
+          }
+          
+          if (['low', 'medium', 'high', 'critical'].includes(matchedSeverity)) {
+            setSeverity(matchedSeverity as Severity);
+          } else {
+            setSeverity('medium');
+          }
+          
+          setDescription(`${data.description}\n\nRecommended Action: ${data.recommendedAction}`);
+        } else {
+          setDescription(data.description || 'AI completed analysis: No hazard detected.');
+        }
+      } else {
+        console.warn('AI analysis endpoint returned error response');
+      }
+    } catch (err) {
+      console.error('Failed to communicate with AI analysis server: ', err);
+    } finally {
+      setIsAnalyzing(false);
       // Auto detect location if empty
       if (!location) {
         handleDetectLocation();
       }
-    }, 1500);
+    }
   };
 
   const handleDetectLocation = () => {
@@ -191,11 +204,16 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose }) => 
     );
   };
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setImagePreview(URL.createObjectURL(file));
-      runAiAnalysis();
+      try {
+        const base64 = await fileToBase64(file);
+        runAiAnalysis(base64);
+      } catch (err) {
+        console.error('Failed to read image file for AI analysis:', err);
+      }
     }
   };
 
@@ -322,124 +340,10 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose }) => 
               </div>
             )}
             
-            {/* Category Select Grid */}
+            {/* Step 1: Capture Scene (Mandatory) */}
             <div>
-              <label className="block text-sm font-semibold tracking-wide text-zinc-300 mb-2.5">
-                1. Incident Category <span className="text-red-500">*</span>
-              </label>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                {CATEGORIES.map((cat) => {
-                  const Icon = cat.icon;
-                  const isSelected = category === cat.value;
-                  return (
-                    <button
-                      key={cat.value}
-                      type="button"
-                      onClick={() => {
-                        setCategory(cat.value);
-                        setErrors(prev => ({ ...prev, category: '' }));
-                      }}
-                      className={`flex flex-col items-center gap-2 rounded-xl border p-3.5 text-center transition-all cursor-pointer ${
-                        isSelected 
-                          ? 'border-red-500/80 bg-red-500/10 text-red-400 font-semibold shadow-[0_0_12px_rgba(239,68,68,0.15)] scale-[1.02]' 
-                          : 'border-zinc-800 bg-zinc-950/40 text-zinc-400 hover:border-zinc-700 hover:text-zinc-200'
-                      }`}
-                    >
-                      <Icon className={`h-6 w-6 ${isSelected ? 'text-red-500 animate-bounce' : 'text-zinc-500'}`} />
-                      <span className="text-xs">{cat.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              {errors.category && <p className="mt-1 text-xs font-medium text-red-500">{errors.category}</p>}
-            </div>
-
-            {/* Severity Toggle */}
-            <div>
-              <label className="block text-sm font-semibold tracking-wide text-zinc-300 mb-2.5">
-                2. Severity Level <span className="text-red-500">*</span>
-              </label>
-              <div className="grid grid-cols-4 gap-2">
-                {SEVERITIES.map((sev) => {
-                  const isSelected = severity === sev.value;
-                  return (
-                    <button
-                      key={sev.value}
-                      type="button"
-                      onClick={() => {
-                        setSeverity(sev.value);
-                        setErrors(prev => ({ ...prev, severity: '' }));
-                      }}
-                      className={`rounded-lg border py-2.5 text-center text-xs transition-all cursor-pointer ${
-                        isSelected ? sev.activeColor : sev.color
-                      }`}
-                    >
-                      {sev.label}
-                    </button>
-                  );
-                })}
-              </div>
-              {errors.severity && <p className="mt-1 text-xs font-medium text-red-500">{errors.severity}</p>}
-            </div>
-
-            {/* Location Area */}
-            <div>
-              <label className="block text-sm font-semibold tracking-wide text-zinc-300 mb-1.5">
-                3. Location & Area <span className="text-red-500">*</span>
-              </label>
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <MapPin className="absolute top-3 left-3 h-4 w-4 text-zinc-500" />
-                  <input
-                    type="text"
-                    value={location}
-                    onChange={(e) => {
-                      setLocation(e.target.value);
-                      setErrors(prev => ({ ...prev, location: '' }));
-                    }}
-                    placeholder="Enter address, landmarks, or GPS coordinates"
-                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950/50 py-2.5 pl-10 pr-4 text-sm text-white placeholder-zinc-500 outline-none transition-all focus:border-red-500/50 focus:ring-1 focus:ring-red-500/50"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={handleDetectLocation}
-                  disabled={detecting}
-                  className="flex items-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-950/30 px-3.5 text-xs font-medium text-zinc-300 transition-all hover:bg-zinc-800 hover:text-white disabled:opacity-50 cursor-pointer"
-                >
-                  {detecting ? (
-                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-red-500 border-t-transparent" />
-                  ) : (
-                    <MapPin className="h-4 w-4 text-red-500 animate-pulse" />
-                  )}
-                  <span className="hidden sm:inline">Detect GPS</span>
-                </button>
-              </div>
-              {errors.location && <p className="mt-1 text-xs font-medium text-red-500">{errors.location}</p>}
-            </div>
-
-            {/* Incident Description */}
-            <div>
-              <label className="block text-sm font-semibold tracking-wide text-zinc-300 mb-1.5">
-                4. Incident Details <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                value={description}
-                onChange={(e) => {
-                  setDescription(e.target.value);
-                  setErrors(prev => ({ ...prev, description: '' }));
-                }}
-                rows={3}
-                placeholder="Provide clear specifics (e.g., number of victims, active fires, blocked routes, required assistance)"
-                className="w-full rounded-xl border border-zinc-800 bg-zinc-950/50 p-3.5 text-sm text-white placeholder-zinc-550 outline-none transition-all focus:border-red-500/50 focus:ring-1 focus:ring-red-500/50"
-              />
-              {errors.description && <p className="mt-1 text-xs font-medium text-red-500">{errors.description}</p>}
-            </div>
-
-            {/* Photo attachment upload */}
-            <div>
-              <label className="block text-sm font-semibold tracking-wide text-zinc-300 mb-1.5 flex justify-between items-center">
-                <span>5. Capture Emergency Scene <span className="text-red-500">*</span></span>
+              <label className="block text-sm font-semibold tracking-wide text-zinc-300 mb-2 flex justify-between items-center">
+                <span>1. Capture Emergency Scene <span className="text-red-500">*</span></span>
                 {errors.image && <span className="text-[11px] text-red-400 font-bold">{errors.image}</span>}
               </label>
               
@@ -568,7 +472,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose }) => 
                     className="flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-zinc-800 bg-zinc-950/10 py-6 text-center transition-all hover:border-red-500/35 hover:bg-zinc-900/10"
                   >
                     <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-zinc-900/60 mb-2 border border-zinc-850">
-                      <Plus className="h-4.5 w-4.5 text-zinc-450" />
+                      <Plus className="h-4.5 w-4.5 text-zinc-455" />
                     </div>
                     <span className="text-sm font-bold text-zinc-300">Upload File / Image</span>
                     <span className="text-[10px] text-zinc-500 mt-1">Select PNG, JPEG from storage</span>
@@ -580,6 +484,103 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose }) => 
                       className="hidden"
                     />
                   </div>
+                </div>
+              )}
+            </div>
+
+            {/* Step 2: Location Area */}
+            <div>
+              <label className="block text-sm font-semibold tracking-wide text-zinc-300 mb-1.5">
+                2. Location & Area <span className="text-red-500">*</span>
+              </label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <MapPin className="absolute top-3 left-3 h-4 w-4 text-zinc-500" />
+                  <input
+                    type="text"
+                    value={location}
+                    onChange={(e) => {
+                      setLocation(e.target.value);
+                      setErrors(prev => ({ ...prev, location: '' }));
+                    }}
+                    placeholder="Enter address, landmarks, or GPS coordinates"
+                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950/50 py-2.5 pl-10 pr-4 text-sm text-white placeholder-zinc-500 outline-none transition-all focus:border-red-500/50 focus:ring-1 focus:ring-red-500/50"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDetectLocation}
+                  disabled={detecting}
+                  className="flex items-center gap-1.5 rounded-xl border border-zinc-800 bg-zinc-950/30 px-3.5 text-xs font-medium text-zinc-300 transition-all hover:bg-zinc-800 hover:text-white disabled:opacity-50 cursor-pointer"
+                >
+                  {detecting ? (
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-red-500 border-t-transparent" />
+                  ) : (
+                    <MapPin className="h-4 w-4 text-red-500 animate-pulse" />
+                  )}
+                  <span className="hidden sm:inline">Detect GPS</span>
+                </button>
+              </div>
+              {errors.location && <p className="mt-1 text-xs font-medium text-red-500">{errors.location}</p>}
+            </div>
+
+            {/* Step 3: AI Assessment Results */}
+            <div className="border-t border-zinc-800/60 pt-4">
+              <label className="block text-xs font-bold uppercase tracking-widest text-zinc-500 mb-3 font-mono">
+                AI Scene Assessment Status
+              </label>
+              
+              {isAnalyzing ? (
+                <div className="rounded-xl border border-dashed border-red-500/30 bg-red-950/5 p-6 flex flex-col items-center justify-center text-center">
+                  <span className="h-6 w-6 animate-spin rounded-full border-2 border-red-500 border-t-transparent mb-2" />
+                  <span className="text-xs font-bold text-red-400 uppercase tracking-wider animate-pulse">Running Gemini Flash Scene Analysis...</span>
+                </div>
+              ) : category && severity && description ? (
+                <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-950/30 p-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Auto-detected Category */}
+                    <div className="rounded-lg bg-zinc-900/40 border border-zinc-850 p-2.5 flex items-center gap-2">
+                      <div className="flex h-7 w-7 items-center justify-center rounded bg-red-500/10 text-red-500 shrink-0">
+                        {category === 'fire' && <Flame className="h-4 w-4" />}
+                        {category === 'flood' && <Droplet className="h-4 w-4" />}
+                        {category === 'medical' && <HeartPulse className="h-4 w-4" />}
+                        {category === 'accident' && <Car className="h-4 w-4" />}
+                        {category === 'earthquake' && <Globe className="h-4 w-4" />}
+                        {category === 'other' && <HelpCircle className="h-4 w-4" />}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider">AI Category</div>
+                        <div className="text-xs font-bold text-zinc-200 capitalize truncate">{category}</div>
+                      </div>
+                    </div>
+
+                    {/* Auto-detected Severity */}
+                    <div className="rounded-lg bg-zinc-900/40 border border-zinc-850 p-2.5 flex items-center gap-2">
+                      <div className="flex h-7 w-7 items-center justify-center rounded bg-red-500/10 text-red-500 shrink-0">
+                        <ShieldAlert className="h-4 w-4 text-red-550" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider">AI Severity</div>
+                        <div className="text-xs font-bold text-red-400 capitalize truncate">{severity}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* AI Description Log */}
+                  <div className="rounded-lg bg-zinc-900/20 border border-zinc-850 p-3">
+                    <div className="text-[9px] uppercase font-bold text-zinc-500 tracking-wider mb-1">AI Details Assessment</div>
+                    <div className="text-xs leading-relaxed text-zinc-300 font-medium">
+                      {description}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-955/10 p-5 text-center text-zinc-500">
+                  <AlertTriangle className="h-6 w-6 text-zinc-600 mx-auto mb-2" />
+                  <p className="text-xs font-semibold">Standby: Awaiting Verification Snapshot</p>
+                  <p className="text-[10px] text-zinc-600 mt-1 max-w-[280px] mx-auto leading-normal">
+                    Capture a webcam snapshot or select an image file to trigger automatic AI incident classification.
+                  </p>
                 </div>
               )}
             </div>
@@ -598,8 +599,8 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose }) => 
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || isAnalyzing}
-              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-red-650 to-orange-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-red-950/20 hover:from-red-600 hover:to-orange-500 transition-all active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+              disabled={isSubmitting || isAnalyzing || !imagePreview || !category}
+              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-red-650 to-orange-600 px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-red-950/20 hover:from-red-600 hover:to-orange-500 transition-all active:scale-[0.98] disabled:opacity-55 cursor-pointer"
             >
               {isSubmitting ? (
                 <>
