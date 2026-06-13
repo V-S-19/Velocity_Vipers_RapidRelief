@@ -44,6 +44,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose }) => 
   // Camera & AI analysis states
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -56,7 +57,7 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose }) => 
     setErrors(prev => ({ ...prev, image: '' }));
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'environment' } 
+        video: { facingMode: facingMode } 
       });
       streamRef.current = stream;
       if (videoRef.current) {
@@ -65,6 +66,25 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose }) => 
       }
     } catch (err) {
       console.error('Failed to open camera: ', err);
+      setErrors(prev => ({ ...prev, image: 'Webcam permission denied or camera device unavailable.' }));
+      setIsCameraActive(false);
+    }
+  };
+
+  const startCameraWithMode = async (mode: 'user' | 'environment') => {
+    setIsCameraActive(true);
+    setErrors(prev => ({ ...prev, image: '' }));
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: mode } 
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+    } catch (err) {
+      console.error('Failed to open camera with mode: ', err);
       setErrors(prev => ({ ...prev, image: 'Webcam permission denied or camera device unavailable.' }));
       setIsCameraActive(false);
     }
@@ -433,37 +453,94 @@ export const ReportModal: React.FC<ReportModalProps> = ({ isOpen, onClose }) => 
                   </button>
                 </div>
               ) : isCameraActive ? (
-                <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
-                  <video 
-                    ref={videoRef} 
-                    className="h-60 w-full object-cover scale-x-[-1]" 
-                    playsInline 
-                    muted
-                  />
+                <div className="fixed inset-0 z-[100] bg-zinc-950 flex flex-col justify-between overflow-hidden">
                   
-                  {/* Visual scanlines scanning overlay */}
-                  <div className="absolute inset-0 border border-red-500/20 pointer-events-none flex items-center justify-center">
-                    <div className="w-[85%] h-[85%] border border-dashed border-zinc-700/60 rounded-lg"></div>
-                    <div className="absolute w-full h-[1px] bg-red-500/30 top-1/2 animate-scan"></div>
+                  {/* Video Viewport */}
+                  <div className="absolute inset-0 z-0">
+                    <video 
+                      ref={videoRef} 
+                      className="h-full w-full object-cover scale-x-[-1]" 
+                      playsInline 
+                      muted
+                    />
                   </div>
 
-                  <div className="absolute bottom-4 left-0 right-0 flex items-center justify-center gap-3 px-4 z-10">
-                    <button
-                      type="button"
-                      onClick={captureSnapshot}
-                      className="flex h-11 w-11 items-center justify-center rounded-full bg-red-650 hover:bg-red-500 text-white font-bold transition-all border-4 border-zinc-900 active:scale-95 shadow-[0_0_15px_rgba(220,38,38,0.5)] cursor-pointer"
-                      title="Take snapshot photo"
-                    >
-                      <Camera className="h-4.5 w-4.5" />
-                    </button>
+                  {/* Scanning Overlays */}
+                  <div className="absolute inset-0 z-10 border border-red-500/10 pointer-events-none flex items-center justify-center">
+                    <div className="relative w-[75vw] h-[55vh] sm:w-[50vw] sm:h-[50vh] border-2 border-dashed border-red-500/20 rounded-2xl flex items-center justify-center">
+                      <div className="absolute top-2 left-2 w-8 h-8 border-t-4 border-l-4 border-red-500"></div>
+                      <div className="absolute top-2 right-2 w-8 h-8 border-t-4 border-r-4 border-red-500"></div>
+                      <div className="absolute bottom-2 left-2 w-8 h-8 border-b-4 border-l-4 border-red-500"></div>
+                      <div className="absolute bottom-2 right-2 w-8 h-8 border-b-4 border-r-4 border-red-500"></div>
+                      <div className="text-[10px] text-red-500/60 uppercase tracking-widest font-mono font-bold animate-pulse">
+                        ALIGN INCIDENT VIEW
+                      </div>
+                    </div>
+                    <div className="absolute w-full h-[2px] bg-red-500/50 shadow-[0_0_10px_#ef4444] top-1/2 left-0 animate-scan"></div>
+                  </div>
+
+                  {/* Top HUD */}
+                  <div className="relative z-20 p-6 bg-gradient-to-b from-black/80 to-transparent flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-2">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                      </span>
+                      <span className="text-xs font-bold uppercase tracking-widest text-zinc-300 font-mono">
+                        LIVE EMERGENCY VIEWPORT LENS
+                      </span>
+                    </div>
                     <button
                       type="button"
                       onClick={stopCamera}
-                      className="rounded-lg bg-zinc-900/95 border border-zinc-800 px-3 py-1.5 text-xs font-semibold text-zinc-400 hover:text-white hover:bg-zinc-850 cursor-pointer"
+                      className="rounded-full bg-zinc-900/90 border border-zinc-800 p-2 text-zinc-400 hover:text-white hover:bg-zinc-850 transition-all cursor-pointer"
+                      title="Cancel Camera"
                     >
-                      Cancel Camera
+                      <X className="h-5 w-5" />
                     </button>
                   </div>
+
+                  {/* Bottom Controls */}
+                  <div className="relative z-20 p-8 bg-gradient-to-t from-black/90 via-black/45 to-transparent flex flex-col items-center gap-4 shrink-0">
+                    <span className="text-[10px] uppercase font-bold tracking-widest text-zinc-400 font-mono">
+                      TAKE CAPTURE TO TRIGGER AI SCENE ANALYSIS
+                    </span>
+                    
+                    <div className="flex items-center justify-between gap-6 w-full max-w-sm">
+                      <div className="text-left text-[9px] text-zinc-550 font-mono w-24">
+                        STATUS: ACTIVE<br/>LENS: 24MM F/1.8
+                      </div>
+
+                      {/* Capture Trigger */}
+                      <button
+                        type="button"
+                        onClick={captureSnapshot}
+                        className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-white hover:bg-zinc-200 text-zinc-950 font-bold transition-all border-4 border-zinc-900 active:scale-95 shadow-[0_0_25px_rgba(255,255,255,0.4)] cursor-pointer animate-pulse-glow"
+                        title="Capture Photo"
+                      >
+                        <Camera className="h-6 w-6 text-zinc-950" />
+                      </button>
+
+                      {/* Camera Facemode Switcher */}
+                      <div className="w-24 text-right">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            stopCamera();
+                            setTimeout(() => {
+                              const nextMode = facingMode === 'user' ? 'environment' : 'user';
+                              setFacingMode(nextMode);
+                              startCameraWithMode(nextMode);
+                            }, 100);
+                          }}
+                          className="rounded-lg bg-zinc-900/90 border border-zinc-800 px-3 py-1.5 text-[9px] font-extrabold text-zinc-400 hover:text-white transition-all cursor-pointer uppercase tracking-wider font-mono"
+                        >
+                          Flip Camera
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">

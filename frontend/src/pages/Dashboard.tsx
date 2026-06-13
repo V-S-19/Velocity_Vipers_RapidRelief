@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Navbar } from '../components/Navbar';
-import { AlertsMap } from '../components/AlertsMap';
+import { DirectLocationPanel } from '../components/DirectLocationPanel';
 import { AlertsFeed } from '../components/AlertsFeed';
 import { ReportModal } from '../components/ReportModal';
 import { SimulatorControl } from '../components/SimulatorControl';
@@ -97,9 +97,9 @@ export const Dashboard: React.FC = () => {
 
         {/* Dashboard Work Grid Split */}
         <section className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch min-h-[550px]">
-          {/* Left panel: Leaflet Map Container */}
+          {/* Left panel: Direct Location Panel */}
           <div className="lg:col-span-7 h-[350px] lg:h-auto min-h-[350px]">
-            <AlertsMap />
+            <DirectLocationPanel />
           </div>
 
           {/* Right panel: Alerts Feed and Simulator Widget */}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Navbar } from '../components/Navbar';
-import { AlertsMap } from '../components/AlertsMap';
+import { DirectLocationPanel } from '../components/DirectLocationPanel';
 import { useAlerts, type Alert, type Severity, type Category } from '../context/AlertContext';
 import { 
   CheckCircle2, AlertOctagon, Trash2, 
@@ -271,9 +271,9 @@ export const AdminDashboard: React.FC = () => {
 
         {/* Map & Alerts Split Layout */}
         <section className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch min-h-[580px]">
-          {/* Map display */}
+          {/* Direct Location Panel display */}
           <div className="lg:col-span-5 h-[300px] lg:h-auto min-h-[300px]">
-            <AlertsMap />
+            <DirectLocationPanel />
           </div>
 
           {/* Incidents Table / Controls Panel */}
